@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vsr-eval"
+version = "1.0.0"
+description = "Local full-reference video super-resolution evaluation (PSNR, SSIM, MS-SSIM, VMAF, LPIPS, ERQA)"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[project.scripts]
+vsr-eval = "vsr_eval.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vsr_eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

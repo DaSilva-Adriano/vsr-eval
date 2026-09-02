@@ -1,0 +1,11 @@
+Official Netflix VMAF JSON models, downloaded from:
+
+  https://github.com/Netflix/vmaf/tree/master/model
+
+Files:
+  vmaf_v0.6.1.json      — default HD / living-room model
+  vmaf_4k_v0.6.1.json   — default when the reference long side is >= 2560 px
+
+These are passed to FFmpeg libvmaf via model=path=... (Windows drive-letter
+colons are escaped). Built-in version=vmaf_v0.6.1 is used only as a fallback
+if a JSON file is missing.

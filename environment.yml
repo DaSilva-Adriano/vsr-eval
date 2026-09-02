@@ -1,0 +1,15 @@
+name: vsr-eval
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - torch
+      - torchvision
+      - -r requirements.txt
+      - -e .
+# Prefer the pip CUDA wheels on this PC (RTX 4080 Super) instead of the
+# conda pytorch-cuda package. See README.md for the exact commands.

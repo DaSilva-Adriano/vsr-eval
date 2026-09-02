@@ -1,0 +1,16 @@
+# Install PyTorch WITH CUDA first, then this file. See README.md.
+# Example (RTX 4080 Super):
+#   uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+#   uv pip install -r requirements.txt
+#   uv pip install -e .
+
+gradio>=4.44,<6
+lpips>=0.1.4
+erqa>=1.1.2
+opencv-python>=4.8
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.8
+plotly>=5.18
+tqdm>=4.66
+scipy>=1.11
