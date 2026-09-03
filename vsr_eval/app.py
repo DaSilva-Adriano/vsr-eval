@@ -12,6 +12,15 @@ from . import ALL_METRICS
 from .availability import ToolStatus, probe_tools
 from .config import AppConfig, load_config, save_config
 from .ffmpeg_metrics import choose_vmaf_model
+from .history import (
+    delete_run,
+    dropdown_choices,
+    format_run_notes,
+    list_runs,
+    load_run,
+    runs_dir,
+    save_run,
+)
 from .pipeline import EvalError, RunRequest, run_evaluation
 from .probe import probe_video, validate_pair
 from .progress import CancelledError, RunProgress
@@ -104,7 +113,61 @@ def _probe_markdown(ref_path: str, dist_text: str, ffprobe: str, scale: bool, me
     return "\n".join(lines)
 
 
-def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
+def _summary_view(rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(rows)
+    keep = [c for c in ["distorted", "psnr_y", "ssim_y", "ms_ssim", "vmaf", "lpips", "erqa"] if c in df.columns]
+    extra = []
+    if "lpips_label" in df.columns:
+        extra.append("lpips_label")
+    if "erqa_label" in df.columns:
+        extra.append("erqa_label")
+    view = df[keep + extra] if not df.empty else df
+
+    def _cell(v):
+        if isinstance(v, float):
+            if math.isinf(v):
+                return "inf" if v > 0 else "-inf"
+            if math.isnan(v):
+                return None
+            return round(v, 6)
+        return v
+
+    if not view.empty:
+        view = view.map(_cell) if hasattr(view, "map") else view.applymap(_cell)
+    return view
+
+
+def _csv_path(path: Path | None) -> str | None:
+    if path is not None and path.is_file():
+        return str(path)
+    return None
+
+
+def _history_dropdown(selected_id: str | None = None):
+    import gradio as gr
+
+    choices, value = dropdown_choices(selected_id)
+    return gr.update(choices=choices, value=value)
+
+
+def _ui_from_run_id(run_id: str | None):
+    if not run_id:
+        return "Idle.", pd.DataFrame(), None, "", None, None
+    saved = load_run(run_id)
+    if saved is None:
+        return "Run not found.", pd.DataFrame(), None, "", None, None
+    fig = plotly_figure(saved.tables) if saved.tables else None
+    return (
+        f"Showing: {saved.label}",
+        _summary_view(saved.summary),
+        fig,
+        saved.notes,
+        _csv_path(saved.summary_csv),
+        _csv_path(saved.per_frame_csv),
+    )
+
+
+def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowser: bool = True) -> None:
     try:
         import gradio as gr
     except Exception as exc:
@@ -201,7 +264,19 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
             run_btn = gr.Button("Run", variant="primary")
             cancel_btn = gr.Button("Cancel")
         progress_md = gr.Markdown("Idle.")
+        with gr.Row():
+            initial_runs = list_runs()
+            history_dd = gr.Dropdown(
+                label="Previous runs",
+                choices=[(item.label, item.id) for item in initial_runs],
+                value=initial_runs[0].id if initial_runs else None,
+                interactive=True,
+            )
+            del_run_btn = gr.Button("Delete selected run", scale=0)
         results_df = gr.Dataframe(label="Pooled scores (one row per distorted file)", wrap=True)
+        with gr.Row():
+            csv_summary = gr.DownloadButton("Download summary CSV")
+            csv_frames = gr.DownloadButton("Download per-frame CSV")
         chart = gr.Plot(label="Per-frame scores")
         log_md = gr.Markdown("")
 
@@ -255,17 +330,18 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
 
             selected = [m for m, on in zip(ALL_METRICS, metric_vals) if on]
             dist_list = [ln.strip() for ln in (dists or "").splitlines() if ln.strip()]
+            hold = gr.update()
             if not ref:
-                yield "Choose a reference MP4.", pd.DataFrame(), None, ""
+                yield "Choose a reference MP4.", pd.DataFrame(), None, "", hold, hold, hold
                 return
             if not dist_list:
-                yield "Add at least one distorted MP4.", pd.DataFrame(), None, ""
+                yield "Add at least one distorted MP4.", pd.DataFrame(), None, "", hold, hold, hold
                 return
             if not outdir:
-                yield "Choose an output directory.", pd.DataFrame(), None, ""
+                yield "Choose an output directory.", pd.DataFrame(), None, "", hold, hold, hold
                 return
             if not selected:
-                yield "Select at least one available metric.", pd.DataFrame(), None, ""
+                yield "Select at least one available metric.", pd.DataFrame(), None, "", hold, hold, hold
                 return
 
             c = load_config()
@@ -303,7 +379,7 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
                 ffprobe=Path(ffprobe),
             )
 
-            yield progress.format_line() or "Starting…", pd.DataFrame(), None, ""
+            yield progress.format_line() or "Starting…", pd.DataFrame(), None, "", hold, hold, hold
 
             holder: dict = {}
             err: list[str] = []
@@ -319,49 +395,34 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
             t = threading.Thread(target=worker, daemon=True)
             t.start()
             while t.is_alive():
-                yield progress.format_line(), pd.DataFrame(), None, ""
+                yield progress.format_line(), pd.DataFrame(), None, "", hold, hold, hold
                 t.join(timeout=0.4)
 
             if err:
-                yield err[0], pd.DataFrame(), None, err[0]
+                yield err[0], pd.DataFrame(), None, err[0], hold, hold, hold
                 return
 
             result = holder.get("result") or {}
             rows = result.get("summary") or []
-            df = pd.DataFrame(rows)
-            keep = [c for c in ["distorted", "psnr_y", "ssim_y", "ms_ssim", "vmaf", "lpips", "erqa"] if c in df.columns]
-            extra = []
-            if "lpips_label" in df.columns:
-                extra.append("lpips_label")
-            if "erqa_label" in df.columns:
-                extra.append("erqa_label")
-            view = df[keep + extra] if not df.empty else df
-
-            def _cell(v):
-                if isinstance(v, float):
-                    if math.isinf(v):
-                        return "inf" if v > 0 else "-inf"
-                    if math.isnan(v):
-                        return None
-                    return round(v, 6)
-                return v
-
-            if not view.empty:
-                view = view.map(_cell) if hasattr(view, "map") else view.applymap(_cell)
+            view = _summary_view(rows)
             fig = result.get("plotly")
             if fig is None and result.get("tables"):
                 fig = plotly_figure(result["tables"])
-            notes = [
-                DIRECTION_NOTE,
-                result.get("vmaf_model_reason") or "",
-                f"Output: `{result.get('outdir')}`",
-            ]
-            for row in rows:
-                for e in row.get("errors") or []:
-                    notes.append(f"**ERROR ({row.get('distorted')}):** {e}")
-                for w in row.get("warnings") or []:
-                    notes.append(f"Warning ({row.get('distorted')}): {w}")
-            yield progress.format_line() or "Done.", view, fig, "\n\n".join(n for n in notes if n)
+            notes = format_run_notes(result)
+
+            csv_sum = None
+            csv_pf = None
+            hist = hold
+            try:
+                saved = save_run(result)
+                hist = _history_dropdown(saved.id)
+                csv_sum = _csv_path(saved.summary_csv)
+                csv_pf = _csv_path(saved.per_frame_csv)
+            except Exception:
+                out = Path(result.get("outdir") or "")
+                csv_sum = _csv_path(out / "summary.csv") if out else None
+
+            yield progress.format_line() or "Done.", view, fig, notes, hist, csv_sum, csv_pf
 
         ref_btn.click(browse_ref, outputs=ref_tb)
         dist_btn.click(browse_dist, inputs=dist_tb, outputs=dist_tb)
@@ -383,8 +444,48 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
                 vmaf_model, lpips_net, scale_vmaf, erqa_vis, erqa_vis_video,
                 vis_start, vis_end, *metric_inputs,
             ],
-            outputs=[progress_md, results_df, chart, log_md],
+            outputs=[progress_md, results_df, chart, log_md, history_dd, csv_summary, csv_frames],
+        )
+
+        def load_selected(run_id):
+            return _ui_from_run_id(run_id)
+
+        def delete_selected(run_id):
+            if run_id:
+                delete_run(run_id)
+            infos = list_runs()
+            nxt = infos[0].id if infos else None
+            msg, view, fig, notes, csv_sum, csv_pf = _ui_from_run_id(nxt)
+            return _history_dropdown(nxt), msg, view, fig, notes, csv_sum, csv_pf
+
+        def restore_last():
+            infos = list_runs()
+            nxt = infos[0].id if infos else None
+            msg, view, fig, notes, csv_sum, csv_pf = _ui_from_run_id(nxt)
+            return _history_dropdown(nxt), msg, view, fig, notes, csv_sum, csv_pf
+
+        history_dd.change(
+            load_selected,
+            inputs=[history_dd],
+            outputs=[progress_md, results_df, chart, log_md, csv_summary, csv_frames],
+        )
+        del_run_btn.click(
+            delete_selected,
+            inputs=[history_dd],
+            outputs=[history_dd, progress_md, results_df, chart, log_md, csv_summary, csv_frames],
+        )
+        demo.load(
+            restore_last,
+            outputs=[history_dd, progress_md, results_df, chart, log_md, csv_summary, csv_frames],
         )
 
     demo.queue()
-    demo.launch(server_name=server_name, server_port=server_port, inbrowser=True, show_api=False)
+    history_root = runs_dir().resolve()
+    history_root.mkdir(parents=True, exist_ok=True)
+    demo.launch(
+        server_name=server_name,
+        server_port=server_port,
+        inbrowser=inbrowser,
+        show_api=False,
+        allowed_paths=[str(history_root)],
+    )

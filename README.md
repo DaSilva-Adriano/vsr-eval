@@ -79,6 +79,10 @@ from https://github.com/Netflix/vmaf/tree/master/model. If the reference long si
 
 ### GUI (Gradio on 127.0.0.1)
 
+Double-click `start-gui.bat` in this folder. It uses `.venv` and opens the local UI.
+
+Or from PowerShell:
+
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -m vsr_eval
@@ -95,6 +99,8 @@ Opens a local UI with:
 - Optional “scale distorted to reference (bicubic, VMAF recommended)” — **never** scales the reference down
 - Run + Cancel, live progress (metric, frame i/N, elapsed)
 - Results table and per-frame Plotly chart
+- Previous runs kept under `%APPDATA%\VSR-Eval\runs` and reloadable in the UI (table, chart, notes)
+- Download summary CSV and per-frame CSV from the browser
 - JSON + CSV export into the output folder
 
 ### CLI
@@ -165,6 +171,8 @@ OUTDIR/
   log.txt
 ```
 
+Each completed run is also copied into `%APPDATA%\VSR-Eval\runs\<run-id>\` with the summary table, per-frame scores, and CSVs needed to show that run again in the GUI after a restart or after the output folder is overwritten. Use **Previous runs** to switch between them, and **Download summary CSV** / **Download per-frame CSV** to save the currently shown results from the browser.
+
 ## Settings
 
 `%APPDATA%\VSR-Eval\config.json`
@@ -196,6 +204,7 @@ vsr_eval/ffmpeg_metrics.py   PSNR, SSIM, VMAF, MS-SSIM
 vsr_eval/lpips_metrics.py    official lpips on CUDA
 vsr_eval/erqa_metrics.py     official erqa on BGR uint8
 vsr_eval/pipeline.py         orchestration + reports
+vsr_eval/history.py          previous-run store for the GUI
 vsr_eval/app.py              Gradio UI
 vsr_eval/cli.py              python -m vsr_eval
 models/                      Netflix VMAF JSON

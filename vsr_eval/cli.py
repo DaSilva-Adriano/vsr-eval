@@ -113,6 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         result = run_evaluation(req, cfg=cfg, progress=progress)
+        try:
+            from .history import save_run
+            save_run(result)
+        except Exception:
+            pass
     except (EvalError, CancelledError) as exc:
         print(f"\nERROR: {exc}", file=sys.stderr)
         return 1
