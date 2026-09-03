@@ -17,7 +17,7 @@ from .ffmpeg_metrics import choose_vmaf_model, run_psnr_ssim, run_vmaf_msssim
 from .lpips_metrics import run_lpips
 from .paths import unique_stem
 from .probe import VideoInfo, info_to_dict, probe_video, validate_pair
-from .progress import CancelledError, RunProgress
+from .progress import ERROR, CancelledError, RunProgress
 from .reports import (
     DIRECTION_NOTE,
     per_frame_table,
@@ -97,10 +97,16 @@ def _run(
     progress: RunProgress,
     log: TextIO,
 ) -> dict[str, Any]:
-    progress.update(metric="init", message="Checking FFmpeg")
-    ff_status = check_ffmpeg(ffmpeg)
-    ff_status.require()
-    check_ffprobe(ffprobe)
+    progress.set_plan(req.dists, metrics)
+    progress.begin_setup("ffmpeg", "Checking FFmpeg")
+    try:
+        ff_status = check_ffmpeg(ffmpeg)
+        ff_status.require()
+        check_ffprobe(ffprobe)
+    except Exception as exc:
+        progress.finish_setup("ffmpeg", ERROR, str(exc))
+        raise
+    progress.finish_setup("ffmpeg")
     log.write(ff_status.version_line + "\n")
     log.flush()
 
@@ -110,15 +116,17 @@ def _run(
         if avail and not avail.available:
             raise EvalError(f"Metric {m!r} is not available: {avail.reason}")
 
-    progress.update(message="Probing videos")
+    progress.begin_setup("probe", "Probing videos")
     ref_info = probe_video(ffprobe, req.ref)
     if ref_info.error:
+        progress.finish_setup("probe", ERROR, ref_info.error)
         raise EvalError(ref_info.error)
 
     dist_infos: list[VideoInfo] = []
     for d in req.dists:
         info = probe_video(ffprobe, d)
         dist_infos.append(info)
+    progress.finish_setup("probe")
 
     start_frame = resolve_start_frame(req.start_time, req.start_frame, ref_info.fps)
     model_id, model_reason = choose_vmaf_model(req.vmaf_model, ref_info.long_side)
@@ -130,7 +138,8 @@ def _run(
     for dist_info in dist_infos:
         progress.check_cancel()
         stem = unique_stem(dist_info.path, used_stems)
-        progress.update(metric="validate", message=f"Validating {stem}")
+        progress.begin_file(stem)
+        progress.begin_step("validate", f"Validating {stem}")
         one: dict[str, Any] = {
             "stem": stem,
             "path": dist_info.path,
@@ -140,6 +149,8 @@ def _run(
         }
         if dist_info.error:
             one["errors"].append(dist_info.error)
+            progress.finish_step("validate", ERROR, dist_info.error)
+            progress.finish_file(stem, ERROR, dist_info.error)
             dist_results.append(one)
             continue
 
@@ -150,9 +161,13 @@ def _run(
         )
         one["warnings"].extend(i.message for i in pair.warnings)
         if pair.errors:
+            msg = "; ".join(i.message for i in pair.errors)
             one["errors"].extend(i.message for i in pair.errors)
+            progress.finish_step("validate", ERROR, msg)
+            progress.finish_file(stem, ERROR, msg)
             dist_results.append(one)
             continue
+        progress.finish_step("validate")
 
         total = req.max_frames
         if total is None and ref_info.frame_count is not None:
@@ -178,17 +193,22 @@ def _run(
             )
         except CancelledError:
             one["errors"].append("Cancelled")
+            progress.finish_file(stem, ERROR, "Cancelled")
             dist_results.append(one)
             raise
         except Exception as exc:
             one["errors"].append(str(exc))
+            progress.finish_file(stem, ERROR, str(exc))
             log.write(traceback.format_exc() + "\n")
             log.flush()
+        else:
+            progress.finish_file(stem)
 
         tables[stem] = per_frame_table(one, start_frame=start_frame)
         write_dist_outputs(outdir, stem, one, start_frame=start_frame)
         dist_results.append(one)
 
+    progress.begin_setup("reports", "Writing reports")
     summary_rows = [summary_row(r["stem"], r) for r in dist_results]
     write_summary(outdir, summary_rows)
     plot_path = None
@@ -217,6 +237,8 @@ def _run(
         "direction": DIRECTION_NOTE,
     }
     dump_json(outdir / "run_config.json", run_config)
+    progress.finish_setup("reports")
+    progress.complete("Done")
 
     return {
         "outdir": str(outdir),
@@ -262,6 +284,7 @@ def _score_one(
     )
 
     if want_psnr or want_ssim:
+        progress.begin_step("psnr_ssim", stem)
         progress.update(metric="PSNR/SSIM", frame=0, total=total, message=stem)
         ff = run_psnr_ssim(
             ffmpeg=ffmpeg,
@@ -281,8 +304,10 @@ def _score_one(
         )
         one["psnr"] = ff.get("psnr")
         one["ssim"] = ff.get("ssim")
+        progress.finish_step("psnr_ssim")
 
     if want_vmaf or want_ms:
+        progress.begin_step("vmaf", model_id)
         progress.update(metric="VMAF", frame=0, total=total, message=model_id)
         scale = bool(req.scale_distorted_for_vmaf and res_differ)
         vmaf = run_vmaf_msssim(
@@ -304,8 +329,11 @@ def _score_one(
             log_fh=log,
         )
         one["vmaf"] = vmaf
+        progress.finish_step("vmaf")
 
     if want_lpips or want_erqa:
+        perc_key = "lpips_erqa" if want_lpips and want_erqa else ("lpips" if want_lpips else "erqa")
+        progress.begin_step(perc_key, stem)
         if res_differ:
             raise EvalError(
                 "LPIPS/ERQA require identical resolutions. "
@@ -378,6 +406,7 @@ def _score_one(
                 fps=ref_info.fps or 24.0,
                 write_video=req.erqa_vis_video,
             )
+        progress.finish_step(perc_key)
 
 
 def _lpips_and_erqa_stream(

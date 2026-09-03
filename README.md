@@ -97,7 +97,7 @@ Opens a local UI with:
 - Segment: start time / start frame, max frames, LPIPS/ERQA stride (1/2/4/8)
 - VMAF model dropdown and LPIPS net dropdown
 - Optional “scale distorted to reference (bicubic, VMAF recommended)” — **never** scales the reference down
-- Run + Cancel, live progress (metric, frame i/N, elapsed)
+- Run + Cancel, live progress board (each file, steps done, what is still queued, frame i/N, elapsed)
 - Results table and per-frame Plotly chart
 - Previous runs kept under `%APPDATA%\VSR-Eval\runs` and reloadable in the UI (table, chart, notes)
 - Download summary CSV and per-frame CSV from the browser

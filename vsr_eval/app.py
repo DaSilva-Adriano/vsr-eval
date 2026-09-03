@@ -263,7 +263,10 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
         with gr.Row():
             run_btn = gr.Button("Run", variant="primary")
             cancel_btn = gr.Button("Cancel")
-        progress_md = gr.Markdown("Idle.")
+        progress_md = gr.Markdown(
+            "Idle — choose a reference and distorted MP4s, then **Run**. "
+            "While a run is going you will see each file, steps already done, and what is still queued."
+        )
         with gr.Row():
             initial_runs = list_runs()
             history_dd = gr.Dropdown(
@@ -316,10 +319,16 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
             except Exception as exc:
                 return f"**Probe failed:** {exc}"
 
+        def _board(progress: RunProgress, extra: str = "") -> str:
+            text = progress.format_markdown()
+            if extra:
+                return f"{text}\n\n**{extra}**" if text else extra
+            return text or "Starting…"
+
         def do_cancel():
             _CANCEL.set()
             _LAST_PROGRESS.cancel()
-            return "Cancel requested…"
+            return _board(_LAST_PROGRESS, "Cancel requested…")
 
         def do_run(ref, dists, outdir, ffmpeg, ffprobe, start_t, start_f, max_f, stride_v,
                    vmaf_m, lpips_n, scale, vis, vis_v, vis_a, vis_b, *metric_vals):
@@ -379,7 +388,8 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
                 ffprobe=Path(ffprobe),
             )
 
-            yield progress.format_line() or "Starting…", pd.DataFrame(), None, "", hold, hold, hold
+            progress.set_plan(dist_list, selected)
+            yield _board(progress, "Starting…"), pd.DataFrame(), None, "", hold, hold, hold
 
             holder: dict = {}
             err: list[str] = []
@@ -395,11 +405,11 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
             t = threading.Thread(target=worker, daemon=True)
             t.start()
             while t.is_alive():
-                yield progress.format_line(), pd.DataFrame(), None, "", hold, hold, hold
+                yield _board(progress), pd.DataFrame(), None, "", hold, hold, hold
                 t.join(timeout=0.4)
 
             if err:
-                yield err[0], pd.DataFrame(), None, err[0], hold, hold, hold
+                yield _board(progress, err[0]), pd.DataFrame(), None, err[0], hold, hold, hold
                 return
 
             result = holder.get("result") or {}
@@ -422,7 +432,7 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
                 out = Path(result.get("outdir") or "")
                 csv_sum = _csv_path(out / "summary.csv") if out else None
 
-            yield progress.format_line() or "Done.", view, fig, notes, hist, csv_sum, csv_pf
+            yield _board(progress) or "Done.", view, fig, notes, hist, csv_sum, csv_pf
 
         ref_btn.click(browse_ref, outputs=ref_tb)
         dist_btn.click(browse_dist, inputs=dist_tb, outputs=dist_tb)
