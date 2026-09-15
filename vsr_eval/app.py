@@ -21,9 +21,10 @@ from .history import (
     runs_dir,
     save_run,
 )
-from .pipeline import EvalError, RunRequest, run_evaluation
+from .pipeline import RunRequest, run_evaluation
 from .probe import probe_video, validate_pair
 from .progress import CancelledError, RunProgress
+from .recover import RecoverError, recover_summary
 from .reports import DIRECTION_NOTE, plotly_figure
 
 _CANCEL = threading.Event()
@@ -263,6 +264,7 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
         with gr.Row():
             run_btn = gr.Button("Run", variant="primary")
             cancel_btn = gr.Button("Cancel")
+            recover_btn = gr.Button("Recover summary")
         progress_md = gr.Markdown(
             "Idle — choose a reference and distorted MP4s, then **Run**. "
             "While a run is going you will see each file, steps already done, and what is still queued."
@@ -432,7 +434,52 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
                 out = Path(result.get("outdir") or "")
                 csv_sum = _csv_path(out / "summary.csv") if out else None
 
-            yield _board(progress) or "Done.", view, fig, notes, hist, csv_sum, csv_pf
+            done_msg = _board(progress) or "Done."
+            if result.get("cancelled"):
+                done_msg = _board(
+                    progress,
+                    "Cancelled — summary written for completed files (in-progress file excluded).",
+                )
+            yield done_msg, view, fig, notes, hist, csv_sum, csv_pf
+
+        def do_recover(outdir):
+            hold = gr.update()
+            if not outdir:
+                return "Choose an output directory.", pd.DataFrame(), None, "", hold, hold, hold
+            try:
+                result = recover_summary(Path(outdir))
+            except RecoverError as exc:
+                return f"**Recover failed:** {exc}", pd.DataFrame(), None, str(exc), hold, hold, hold
+            except Exception as exc:
+                return f"**Recover failed:** {exc}", pd.DataFrame(), None, str(exc), hold, hold, hold
+
+            rows = result.get("summary") or []
+            view = _summary_view(rows)
+            fig = result.get("plotly")
+            if fig is None and result.get("tables"):
+                fig = plotly_figure(result["tables"])
+            notes = format_run_notes(result)
+            hist = hold
+            csv_sum = None
+            csv_pf = None
+            try:
+                saved = save_run(result)
+                hist = _history_dropdown(saved.id)
+                csv_sum = _csv_path(saved.summary_csv)
+                csv_pf = _csv_path(saved.per_frame_csv)
+            except Exception:
+                out = Path(result.get("outdir") or "")
+                csv_sum = _csv_path(out / "summary.csv") if out else None
+            skipped = result.get("skipped_last") or ""
+            family = result.get("family") or ""
+            ignored = result.get("ignored_other_runs") or []
+            bits = [f"skipped last treated: `{skipped}`"]
+            if family:
+                bits.insert(0, f"family `{family}`")
+            if ignored:
+                bits.append(f"ignored {len(ignored)} file(s) from earlier runs")
+            msg = f"Recovered summary from `{result.get('outdir')}` ({', '.join(bits)})."
+            return msg, view, fig, notes, hist, csv_sum, csv_pf
 
         ref_btn.click(browse_ref, outputs=ref_tb)
         dist_btn.click(browse_dist, inputs=dist_tb, outputs=dist_tb)
@@ -446,6 +493,11 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
             outputs=probe_md,
         )
         cancel_btn.click(do_cancel, outputs=progress_md)
+        recover_btn.click(
+            do_recover,
+            inputs=[out_tb],
+            outputs=[progress_md, results_df, chart, log_md, history_dd, csv_summary, csv_frames],
+        )
         run_btn.click(
             do_run,
             inputs=[

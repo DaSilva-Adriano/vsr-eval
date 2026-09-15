@@ -98,6 +98,7 @@ Opens a local UI with:
 - VMAF model dropdown and LPIPS net dropdown
 - Optional “scale distorted to reference (bicubic, VMAF recommended)” — **never** scales the reference down
 - Run + Cancel, live progress board (each file, steps done, what is still queued, frame i/N, elapsed)
+- Recover summary from an interrupted output folder (skips the last treated file)
 - Results table and per-frame Plotly chart
 - Previous runs kept under `%APPDATA%\VSR-Eval\runs` and reloadable in the UI (table, chart, notes)
 - Download summary CSV and per-frame CSV from the browser
@@ -132,7 +133,24 @@ Useful flags:
 --ffmpeg C:\VSR\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe
 --ffprobe C:\VSR\ffmpeg-9.0.1-full_build\bin\ffprobe.exe
 --self-test
+--recover --out C:\VSR\results
 ```
+
+### Recover a summary after an interruption
+
+If a run is killed, crashes, or is cancelled before it writes `summary.csv` / `summary.json`, the per-file outputs (`*_per_frame.json`, `*_psnr.log`, `*_vmaf.json`, …) are usually already on disk.
+
+Rebuild the summary from that folder:
+
+```powershell
+python -m vsr_eval --recover --out C:\VSR\results
+```
+
+In the GUI, set **Output directory** to that folder and click **Recover summary**.
+
+If the output folder still contains files from **earlier runs**, recovery keeps only the **last run**: the clip family of the newest file (for example every `s-racenight_lossless-*` next to leftover sunflower / karting / sollevante outputs). When names do not share that pattern, it uses the most recent time cluster instead.
+
+The **last treated file** of that run is never added to the recovered summary. That file is the one most likely to have been truncated mid-write. `recovery.json` records the family, the skipped stem, and which older files were ignored. Cancelled runs also write a summary of files that had already finished (the in-progress file is excluded).
 
 ## Preconditions
 
@@ -204,6 +222,7 @@ vsr_eval/ffmpeg_metrics.py   PSNR, SSIM, VMAF, MS-SSIM
 vsr_eval/lpips_metrics.py    official lpips on CUDA
 vsr_eval/erqa_metrics.py     official erqa on BGR uint8
 vsr_eval/pipeline.py         orchestration + reports
+vsr_eval/recover.py          rebuild summary from per-file outputs
 vsr_eval/history.py          previous-run store for the GUI
 vsr_eval/app.py              Gradio UI
 vsr_eval/cli.py              python -m vsr_eval

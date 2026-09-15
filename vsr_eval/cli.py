@@ -10,6 +10,7 @@ from . import ALL_METRICS, __version__
 from .config import AppConfig, load_config, save_config
 from .pipeline import EvalError, RunRequest, run_evaluation
 from .progress import CancelledError, RunProgress, attach_console
+from .recover import RecoverError, recover_summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ffprobe", type=str, default=None, help="Absolute ffprobe.exe path (overrides settings)")
     p.add_argument("--lpips-batch", type=int, default=4)
     p.add_argument("--self-test", action="store_true", help="Run the synthetic two-frame unit test and exit")
+    p.add_argument(
+        "--recover",
+        action="store_true",
+        help="Rebuild summary.csv/json from existing per-file outputs in --out. "
+             "Skips the last treated file (it may be incomplete after an interruption).",
+    )
     p.add_argument("--save-settings", action="store_true", help="Write current ffmpeg/metric defaults to %%APPDATA%%\\VSR-Eval\\config.json")
     p.add_argument("--version", action="version", version=f"VSR-Eval {__version__}")
     return p
@@ -70,6 +77,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.self_test:
         from .selftest import run_standalone
         return run_standalone()
+
+    if args.recover:
+        if not args.out:
+            parser.error("--recover requires --out (the interrupted run's output directory).")
+        try:
+            result = recover_summary(Path(args.out))
+            try:
+                from .history import save_run
+                save_run(result)
+            except Exception:
+                pass
+        except RecoverError as exc:
+            print(f"\nERROR: {exc}", file=sys.stderr)
+            return 1
+        print()
+        print(f"Recovered: {result['outdir']}")
+        print(result.get("vmaf_model_reason") or "")
+        _print_result_table(result)
+        return 0
 
     if args.gui or (not args.ref and not args.dists and not args.out):
         from .app import launch_gui
@@ -118,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             save_run(result)
         except Exception:
             pass
-    except (EvalError, CancelledError) as exc:
+    except (EvalError, RecoverError, CancelledError) as exc:
         print(f"\nERROR: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
@@ -126,8 +152,19 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
     print()
+    if result.get("cancelled"):
+        print("Cancelled — summary written for completed files (in-progress file excluded).")
     print(f"Output: {result['outdir']}")
     print(result.get("vmaf_model_reason") or "")
+    _print_result_table(result)
+    if result.get("cancelled"):
+        return 130
+    if any(row.get("errors") for row in result.get("summary") or []):
+        return 1
+    return 0
+
+
+def _print_result_table(result: dict) -> None:
     print("Higher is better: PSNR / SSIM / MS-SSIM / VMAF / ERQA")
     print("Lower is better:  LPIPS")
     print()
@@ -148,6 +185,3 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ERROR: {err}")
         for warn in row.get("warnings") or []:
             print(f"  warn: {warn}")
-    if any(row.get("errors") for row in result.get("summary") or []):
-        return 1
-    return 0

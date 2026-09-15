@@ -134,6 +134,7 @@ def _run(
     used_stems: set[str] = set()
     dist_results: list[dict[str, Any]] = []
     tables: dict[str, Any] = {}
+    cancelled = False
 
     for dist_info in dist_infos:
         progress.check_cancel()
@@ -194,8 +195,11 @@ def _run(
         except CancelledError:
             one["errors"].append("Cancelled")
             progress.finish_file(stem, ERROR, "Cancelled")
-            dist_results.append(one)
-            raise
+            # Do not append the in-progress file — it may be incomplete.
+            if not dist_results:
+                raise
+            cancelled = True
+            break
         except Exception as exc:
             one["errors"].append(str(exc))
             progress.finish_file(stem, ERROR, str(exc))
@@ -207,16 +211,12 @@ def _run(
         tables[stem] = per_frame_table(one, start_frame=start_frame)
         write_dist_outputs(outdir, stem, one, start_frame=start_frame)
         dist_results.append(one)
+        # Keep summary in sync after each completed file so a crash still
+        # leaves a usable report of everything finished so far.
+        _emit_summary(outdir, dist_results, tables, log)
 
     progress.begin_setup("reports", "Writing reports")
-    summary_rows = [summary_row(r["stem"], r) for r in dist_results]
-    write_summary(outdir, summary_rows)
-    plot_path = None
-    if tables:
-        try:
-            plot_path = write_scores_plot(outdir, tables)
-        except Exception as exc:
-            log.write(f"plot failed: {exc}\n")
+    summary_rows, plot_path = _emit_summary(outdir, dist_results, tables, log)
 
     run_config = {
         "vsr_eval": __version__,
@@ -236,9 +236,14 @@ def _run(
         "ffmpeg_version": ff_status.version_line,
         "direction": DIRECTION_NOTE,
     }
+    if cancelled:
+        run_config["cancelled"] = True
     dump_json(outdir / "run_config.json", run_config)
     progress.finish_setup("reports")
-    progress.complete("Done")
+    if cancelled:
+        progress.complete("Cancelled — summary written for completed files")
+    else:
+        progress.complete("Done")
 
     return {
         "outdir": str(outdir),
@@ -252,7 +257,26 @@ def _run(
         "plot": str(plot_path) if plot_path else None,
         "run_config": run_config,
         "plotly": plotly_figure(tables) if tables else None,
+        "cancelled": cancelled,
     }
+
+
+def _emit_summary(
+    outdir: Path,
+    dist_results: list[dict[str, Any]],
+    tables: dict[str, Any],
+    log: TextIO,
+) -> tuple[list[dict[str, Any]], Path | None]:
+    summary_rows = [summary_row(r["stem"], r) for r in dist_results]
+    write_summary(outdir, summary_rows)
+    plot_path = None
+    if tables:
+        try:
+            plot_path = write_scores_plot(outdir, tables)
+        except Exception as exc:
+            log.write(f"plot failed: {exc}\n")
+            log.flush()
+    return summary_rows, plot_path
 
 
 def _score_one(

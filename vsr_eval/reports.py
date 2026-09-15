@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from .util import dump_json, json_safe
+from .util import dump_json, harmonic_mean, json_safe, pool_scores
 
 
 SUMMARY_COLUMNS = [
@@ -75,6 +76,97 @@ def summary_row(stem: str, result: dict[str, Any]) -> dict[str, Any]:
         "erqa_label": (result.get("erqa") or {}).get("label"),
         "warnings": result.get("warnings") or [],
         "errors": result.get("errors") or [],
+    }
+
+
+def _numeric_values(series) -> list[float]:
+    vals: list[float] = []
+    for v in series.tolist():
+        if v is None:
+            continue
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in {"inf", "+inf", "infinity"}:
+                vals.append(float("inf"))
+                continue
+            if s in {"-inf", "-infinity"}:
+                vals.append(float("-inf"))
+                continue
+            try:
+                v = float(v)
+            except ValueError:
+                continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(fv):
+            continue
+        vals.append(fv)
+    return vals
+
+
+def summary_row_from_table(
+    stem: str,
+    df: pd.DataFrame,
+    *,
+    path: str | None = None,
+    warnings: list[str] | None = None,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    """Pool a per-frame table into the same shape as ``summary_row``."""
+
+    def pooled(col: str) -> dict[str, float]:
+        if df is None or df.empty or col not in df.columns:
+            return {}
+        vals = _numeric_values(df[col])
+        return pool_scores(vals) if vals else {}
+
+    psnr_y = pooled("psnr_y")
+    psnr_u = pooled("psnr_u")
+    psnr_v = pooled("psnr_v")
+    psnr_avg = pooled("psnr_avg")
+    ssim_y = pooled("ssim_y")
+    ssim_u = pooled("ssim_u")
+    ssim_v = pooled("ssim_v")
+    ssim_all = pooled("ssim_all")
+    ms = pooled("ms_ssim")
+    vmaf_vals = _numeric_values(df["vmaf"]) if df is not None and not df.empty and "vmaf" in df.columns else []
+    vmaf_pool = pool_scores(vmaf_vals) if vmaf_vals else {}
+    vmaf_hmean = harmonic_mean(vmaf_vals) if vmaf_vals else None
+    if vmaf_hmean is not None and math.isnan(vmaf_hmean):
+        vmaf_hmean = vmaf_pool.get("mean")
+    lpips = pooled("lpips")
+    erqa = pooled("erqa")
+    return {
+        "distorted": stem,
+        "path": path,
+        "psnr_y": psnr_y.get("mean"),
+        "psnr_u": psnr_u.get("mean"),
+        "psnr_v": psnr_v.get("mean"),
+        "psnr_avg": psnr_avg.get("mean"),
+        "ssim_y": ssim_y.get("mean"),
+        "ssim_u": ssim_u.get("mean"),
+        "ssim_v": ssim_v.get("mean"),
+        "ssim_all": ssim_all.get("mean"),
+        "ms_ssim": ms.get("mean"),
+        "vmaf": vmaf_hmean if vmaf_hmean is not None else vmaf_pool.get("mean"),
+        "vmaf_mean": vmaf_pool.get("mean"),
+        "vmaf_harmonic_mean": vmaf_hmean,
+        "lpips": lpips.get("mean"),
+        "lpips_min": lpips.get("min"),
+        "lpips_max": lpips.get("max"),
+        "lpips_p50": lpips.get("p50"),
+        "lpips_p95": lpips.get("p95"),
+        "lpips_label": "LPIPS" if lpips else None,
+        "erqa": erqa.get("mean"),
+        "erqa_min": erqa.get("min"),
+        "erqa_max": erqa.get("max"),
+        "erqa_p50": erqa.get("p50"),
+        "erqa_p95": erqa.get("p95"),
+        "erqa_label": "ERQA" if erqa else None,
+        "warnings": list(warnings or []),
+        "errors": list(errors or []),
     }
 
 
