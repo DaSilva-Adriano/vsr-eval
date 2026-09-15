@@ -2,10 +2,16 @@ Official Netflix VMAF JSON models, downloaded from:
 
   https://github.com/Netflix/vmaf/tree/master/model
 
-Files:
-  vmaf_v0.6.1.json      — default HD / living-room model
-  vmaf_4k_v0.6.1.json   — default when the reference long side is >= 2560 px
+v0 (auto / auto-v0 picks HD vs 4K when reference long side is >= 2560 px):
+  vmaf_v0.6.1.json
+  vmaf_4k_v0.6.1.json
+
+v1 (auto-v1 picks 1080p 3H vs 4K 1.5H the same way):
+  vmaf_v1.0.16_3d0h.json         — 1080p @ 3H
+  vmaf_v1.0.16_1d5h_2160.json    — 4K @ 1.5H (v1 4K default)
+  vmaf_v1.0.16_5d0h.json         — phone @ 5H
+  vmaf_v1.0.16_3d0h_2160.json    — 4K @ 3H
 
 These are passed to FFmpeg libvmaf via model=path=... (Windows drive-letter
 colons are escaped). Built-in version=vmaf_v0.6.1 is used only as a fallback
-if a JSON file is missing.
+for v0 models if a JSON file is missing.

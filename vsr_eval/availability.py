@@ -118,12 +118,15 @@ def probe_tools(cfg: AppConfig) -> ToolStatus:
     )
     vmaf_ok = ff.ok and ff.filters_found.get("libvmaf", False)
     model_ok = vmaf_model_file("vmaf_v0.6.1").is_file()
-    vmaf_reason = "FFmpeg libvmaf + shipped JSON models"
+    v1_ok = vmaf_model_file("vmaf_v1.0.16_3d0h").is_file()
+    vmaf_reason = "FFmpeg libvmaf + shipped v0/v1 JSON models"
     if vmaf_ok and not model_ok:
         vmaf_reason = (
             "libvmaf is present but .\\models\\vmaf_v0.6.1.json is missing. "
             "Built-in version=vmaf_v0.6.1 may still work; ship the JSON models."
         )
+    elif vmaf_ok and not v1_ok:
+        vmaf_reason = "FFmpeg libvmaf + v0 models (v1 JSON missing from .\\models\\)"
     elif not vmaf_ok:
         vmaf_reason = ffmpeg_metrics_reason or "libvmaf filter missing"
     status.metrics["vmaf"] = MetricAvailability("vmaf", vmaf_ok, vmaf_reason)

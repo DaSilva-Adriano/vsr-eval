@@ -11,7 +11,26 @@ DEFAULT_FFMPEG = r"C:\VSR\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe"
 DEFAULT_FFPROBE = r"C:\VSR\ffmpeg-9.0.1-full_build\bin\ffprobe.exe"
 
 DEFAULT_METRICS = ["psnr", "ssim", "ms_ssim", "vmaf", "lpips", "erqa"]
-VMAF_MODELS = ("vmaf_v0.6.1", "vmaf_4k_v0.6.1")
+VMAF_MODELS = (
+    "vmaf_v0.6.1",
+    "vmaf_4k_v0.6.1",
+    "vmaf_v1.0.16_3d0h",
+    "vmaf_v1.0.16_1d5h_2160",
+    "vmaf_v1.0.16_5d0h",
+    "vmaf_v1.0.16_3d0h_2160",
+)
+VMAF_AUTOS = ("auto", "auto-v0", "auto-v1")
+VMAF_SELECTORS = VMAF_AUTOS + VMAF_MODELS
+VMAF_DROPDOWN = [
+    ("auto (v0 HD/4K)", "auto"),
+    ("auto (v1 HD/4K)", "auto-v1"),
+    ("vmaf_v0.6.1 (HD 3H)", "vmaf_v0.6.1"),
+    ("vmaf_4k_v0.6.1 (4K 1.5H)", "vmaf_4k_v0.6.1"),
+    ("vmaf_v1.0.16 1080p 3H", "vmaf_v1.0.16_3d0h"),
+    ("vmaf_v1.0.16 4K 1.5H", "vmaf_v1.0.16_1d5h_2160"),
+    ("vmaf_v1.0.16 phone 5H", "vmaf_v1.0.16_5d0h"),
+    ("vmaf_v1.0.16 4K 3H", "vmaf_v1.0.16_3d0h_2160"),
+]
 LPIPS_NETS = ("alex", "vgg")
 ERQA_STRIDES = (1, 2, 4, 8)
 
@@ -58,7 +77,7 @@ def load_config() -> AppConfig:
             setattr(cfg, key, data[key])
     if not isinstance(cfg.default_metrics, list) or not cfg.default_metrics:
         cfg.default_metrics = list(DEFAULT_METRICS)
-    if cfg.vmaf_model not in ("auto", *VMAF_MODELS):
+    if cfg.vmaf_model not in VMAF_SELECTORS:
         cfg.vmaf_model = "auto"
     if cfg.lpips_net not in LPIPS_NETS:
         cfg.lpips_net = "alex"

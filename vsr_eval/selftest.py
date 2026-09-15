@@ -77,8 +77,10 @@ def test_ssim_parser() -> None:
 
 
 def test_vmaf_models_present() -> None:
-    for name in ("vmaf_v0.6.1.json", "vmaf_4k_v0.6.1.json"):
-        path = models_dir() / name
+    from .config import VMAF_MODELS
+
+    for name in VMAF_MODELS:
+        path = models_dir() / f"{name}.json"
         if not path.is_file() or path.stat().st_size < 1000:
             raise AssertionError(f"Missing VMAF model {path}")
 

@@ -57,19 +57,37 @@ def _f(val: str) -> float:
     return float(val)
 
 
+_V0_BUILTINS = frozenset({"vmaf_v0.6.1", "vmaf_4k_v0.6.1"})
+
+
 def choose_vmaf_model(model: str, ref_long_side: int) -> tuple[str, str]:
-    """Return (model_id, reason). model is 'auto' or a concrete id."""
-    if model and model != "auto":
-        return model, f"User-selected VMAF model: {model}"
-    if ref_long_side >= 2560:
-        return "vmaf_4k_v0.6.1", (
-            f"Reference long side is {ref_long_side} px (>= 2560). "
-            "Defaulting to vmaf_4k_v0.6.1."
+    """Return (concrete model_id, reason).
+
+    ``auto`` / ``auto-v0`` pick v0 HD vs 4K. ``auto-v1`` picks v1 1080p 3H vs 4K 1.5H.
+    """
+    key = (model or "auto").strip()
+    four_k = int(ref_long_side or 0) >= 2560
+    if key in {"auto", "auto-v0"}:
+        if four_k:
+            return "vmaf_4k_v0.6.1", (
+                f"auto (v0): reference long side is {ref_long_side} px (>= 2560). "
+                "Using vmaf_4k_v0.6.1."
+            )
+        return "vmaf_v0.6.1", (
+            f"auto (v0): reference long side is {ref_long_side} px (< 2560). "
+            "Using vmaf_v0.6.1."
         )
-    return "vmaf_v0.6.1", (
-        f"Reference long side is {ref_long_side} px (< 2560). "
-        "Defaulting to vmaf_v0.6.1."
-    )
+    if key == "auto-v1":
+        if four_k:
+            return "vmaf_v1.0.16_1d5h_2160", (
+                f"auto (v1): reference long side is {ref_long_side} px (>= 2560). "
+                "Using vmaf_v1.0.16_1d5h_2160 (4K @ 1.5H)."
+            )
+        return "vmaf_v1.0.16_3d0h", (
+            f"auto (v1): reference long side is {ref_long_side} px (< 2560). "
+            "Using vmaf_v1.0.16_3d0h (1080p @ 3H)."
+        )
+    return key, f"User-selected VMAF model: {key}"
 
 
 def resolve_vmaf_model_path(model_id: str) -> Path:
@@ -327,7 +345,9 @@ def run_vmaf_msssim(
             total_frames=total_frames, log_fh=log_fh,
         )
     except FFmpegError as exc:
-        # Fallback: Gyan/libvmaf built-in models, no filesystem path.
+        if model_id not in _V0_BUILTINS:
+            raise
+        # Fallback: Gyan/libvmaf built-in v0 models, no filesystem path.
         fallback = dict(opts)
         fallback["model"] = f"version={model_id}"
         libvmaf_fb = "libvmaf=" + ":".join(

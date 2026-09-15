@@ -10,7 +10,7 @@ import pandas as pd
 
 from . import ALL_METRICS
 from .availability import ToolStatus, probe_tools
-from .config import AppConfig, load_config, save_config
+from .config import AppConfig, VMAF_DROPDOWN, load_config, save_config
 from .ffmpeg_metrics import choose_vmaf_model
 from .history import (
     delete_run,
@@ -96,9 +96,11 @@ def _probe_markdown(ref_path: str, dist_text: str, ffprobe: str, scale: bool, me
         lines.append(f"- color range: {ref.color_range}")
     if ref.error:
         lines.append(f"- **ERROR:** {ref.error}")
-    model_id, reason = choose_vmaf_model("auto", ref.long_side)
+    v0_id, v0_reason = choose_vmaf_model("auto", ref.long_side)
+    v1_id, v1_reason = choose_vmaf_model("auto-v1", ref.long_side)
     lines.append("")
-    lines.append(f"**Auto VMAF model:** `{model_id}` — {reason}")
+    lines.append(f"**Auto VMAF v0:** `{v0_id}` — {v0_reason}")
+    lines.append(f"**Auto VMAF v1:** `{v1_id}` — {v1_reason}")
     lines.append("")
     for d in dists:
         info = probe_video(ffprobe, d)
@@ -241,10 +243,13 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
                         value=str(int(cfg.erqa_stride or 1)),
                     )
                 with gr.Row():
+                    vmaf_sel = cfg.vmaf_model or "auto"
+                    if vmaf_sel == "auto-v0":
+                        vmaf_sel = "auto"
                     vmaf_model = gr.Dropdown(
                         label="VMAF model",
-                        choices=["auto", "vmaf_v0.6.1", "vmaf_4k_v0.6.1"],
-                        value=cfg.vmaf_model or "auto",
+                        choices=list(VMAF_DROPDOWN),
+                        value=vmaf_sel,
                     )
                     lpips_net = gr.Dropdown(
                         label="LPIPS net",

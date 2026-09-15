@@ -64,12 +64,26 @@ Expected: `True` and `NVIDIA GeForce RTX 4080 Super`. If `torch.cuda.is_availabl
 
 If the `cu126` index 404s on a newer PyTorch, use the current CUDA index from https://pytorch.org/get-started/locally/ (`cu128`, etc.). Driver here reports CUDA 13.x, which runs CUDA 12 wheels.
 
-VMAF models ship in `.\models\`:
+VMAF models ship in `.\models\` from https://github.com/Netflix/vmaf/tree/master/model.
 
-- `vmaf_v0.6.1.json`
-- `vmaf_4k_v0.6.1.json`
+**v0** (original):
 
-from https://github.com/Netflix/vmaf/tree/master/model. If the reference long side is **≥ 2560 px**, the app defaults to `vmaf_4k_v0.6.1` and says so in the UI.
+- `vmaf_v0.6.1.json` — 1080p living-room (3H)
+- `vmaf_4k_v0.6.1.json` — 4K TV (1.5H)
+
+**v1** (June 2026, more accurate; uses CAMBI + chroma speed):
+
+- `vmaf_v1.0.16_3d0h.json` — 1080p @ 3H
+- `vmaf_v1.0.16_1d5h_2160.json` — 4K @ 1.5H (v1 4K default)
+- `vmaf_v1.0.16_5d0h.json` — phone @ 5H
+- `vmaf_v1.0.16_3d0h_2160.json` — 4K @ 3H (score range 0–110)
+
+Two autos pick HD vs 4K from the reference long side (**≥ 2560 px** → 4K model):
+
+- `auto` / `auto-v0` → v0 `vmaf_v0.6.1` or `vmaf_4k_v0.6.1`
+- `auto-v1` → v1 `vmaf_v1.0.16_3d0h` or `vmaf_v1.0.16_1d5h_2160`
+
+The UI and probe print both auto choices. Saved settings still default to `auto` (v0).
 
 ### Optional conda
 
@@ -126,7 +140,7 @@ Useful flags:
 ```
 --start-frame 0 --max-frames 300
 --stride 4
---vmaf-model auto|vmaf_v0.6.1|vmaf_4k_v0.6.1
+--vmaf-model auto|auto-v0|auto-v1|vmaf_v0.6.1|vmaf_4k_v0.6.1|vmaf_v1.0.16_3d0h|vmaf_v1.0.16_1d5h_2160|vmaf_v1.0.16_5d0h|vmaf_v1.0.16_3d0h_2160
 --lpips-net alex|vgg
 --scale-distorted
 --erqa-vis --erqa-vis-start 0 --erqa-vis-end 24 --erqa-vis-video

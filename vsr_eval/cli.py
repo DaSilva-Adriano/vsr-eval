@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import ALL_METRICS, __version__
-from .config import AppConfig, load_config, save_config
+from .config import AppConfig, VMAF_SELECTORS, load_config, save_config
 from .pipeline import EvalError, RunRequest, run_evaluation
 from .progress import CancelledError, RunProgress, attach_console
 from .recover import RecoverError, recover_summary
@@ -34,7 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--start-frame", type=int, default=0, help="Segment start frame (overrides --start-time if > 0)")
     p.add_argument("--max-frames", type=int, default=None, help="Compare at most N frames")
     p.add_argument("--stride", type=int, default=1, help="Frame stride for LPIPS/ERQA (1, 2, 4, or 8)")
-    p.add_argument("--vmaf-model", default="auto", choices=["auto", "vmaf_v0.6.1", "vmaf_4k_v0.6.1"])
+    p.add_argument(
+        "--vmaf-model",
+        default="auto",
+        choices=list(VMAF_SELECTORS),
+        help="auto / auto-v0: v0 HD vs 4K by resolution. auto-v1: v1 1080p 3H vs 4K 1.5H.",
+    )
     p.add_argument("--lpips-net", default="alex", choices=["alex", "vgg"])
     p.add_argument(
         "--scale-distorted", action="store_true",
