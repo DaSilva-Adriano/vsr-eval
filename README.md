@@ -2,7 +2,9 @@
 
 Local Windows desktop + CLI tool that compares a high-resolution **reference** MP4 against one or more **upscaled / reconstructed** MP4s and reports full-reference quality metrics used for video super-resolution evaluation.
 
-This is **not** an upscaler and **not** a web SaaS. It runs on this PC.
+This is **not** an upscaler and **not** a web service. It runs locally (Gradio UI on `127.0.0.1`).
+
+Developed on an NVIDIA GeForce RTX 4080 Super (16 GB). Any NVIDIA GPU with a CUDA PyTorch build should work for LPIPS; FFmpeg metrics stay on the CPU.
 
 Licensed under [GNU GPL v3 or later](LICENSE). Third-party model licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
 
@@ -24,49 +26,55 @@ Directionality is also shown in the GUI:
 
 Inputs are assumed to already be temporally aligned. Optional start time / start frame + max frames compare a segment (for example the first 300 frames).
 
-## This machine
+## Requirements
 
-- GPU: NVIDIA GeForce RTX 4080 Super (16 GB). LPIPS uses CUDA. FFmpeg metrics stay on the CPU (software HEVC decode, libvmaf `n_threads` = CPU cores).
-- FFmpeg / FFprobe (Gyan full build 9.0.1, `--enable-libvmaf`):
+- **Windows**
+- **Python 3.11+** (3.12 is what the repo is tested with)
+- **NVIDIA GPU + CUDA PyTorch** for LPIPS. PSNR / SSIM / MS-SSIM / VMAF / ERQA do not need a GPU.
+- **FFmpeg + FFprobe**, full build with `--enable-libvmaf` (the [Gyan](https://www.gyan.dev/ffmpeg/builds/) `full_build` zip is the usual Windows choice)
 
-```
-C:\VSR\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe
-C:\VSR\ffmpeg-9.0.1-full_build\bin\ffprobe.exe
-```
-
-Those paths are the defaults. Override them in the GUI, with `--ffmpeg` / `--ffprobe`, or in `%APPDATA%\VSR-Eval\config.json`.
-
-On startup the app runs `ffmpeg -version` and `ffmpeg -filters` and **fails clearly** if `libvmaf`, `psnr`, or `ssim` are missing.
+On startup the app runs `ffmpeg -version` and `ffmpeg -filters` and **fails clearly** if `libvmaf`, `psnr`, or `ssim` are missing. Point it at the binaries in the GUI, with `--ffmpeg` / `--ffprobe`, or in `%APPDATA%\VSR-Eval\config.json`. PATH is not used.
 
 Videos are expected to be **MP4 / libx265 / yuv420p (8-bit 4:2:0)**. Decode is software-first (`-hwaccel none`, native `hevc` decoder) so scores never silently depend on NVDEC.
 
-## Install (Windows, this PC)
+LPIPS uses CUDA. FFmpeg metrics stay on the CPU (software HEVC decode, libvmaf `n_threads` = CPU cores).
 
-Python 3.11+ is required. This repo is set up for **3.12** via `uv` (already used to create `.venv`).
+## Install
 
-Open PowerShell in `C:\Users\adri1\Grok\03-SREVAL`:
+From the repo root in PowerShell:
 
 ```powershell
-# 1. Virtualenv (skip if .venv already exists)
+# 1. Virtualenv
 uv venv --python 3.12 .venv
 .\.venv\Scripts\Activate.ps1
 
 # 2. PyTorch WITH CUDA — not the CPU wheel
+#    Pick the CUDA index that matches your driver from
+#    https://pytorch.org/get-started/locally/
+#    cu126 is a typical CUDA 12.6 wheel (works on a 4080 Super).
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
 # 3. The rest of the stack + this package
 uv pip install -r requirements.txt
 uv pip install -e .
 
-# 4. Confirm the 4080 Super is visible
+# 4. Confirm CUDA is visible
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
-Expected: `True` and `NVIDIA GeForce RTX 4080 Super`. If `torch.cuda.is_available()` is False, LPIPS is disabled with an error telling you to uninstall the CPU wheel.
+You want `True` and your GPU name. If `torch.cuda.is_available()` is False, LPIPS is disabled with an error telling you to uninstall the CPU wheel.
 
-If the `cu126` index 404s on a newer PyTorch, use the current CUDA index from https://pytorch.org/get-started/locally/ (`cu128`, etc.). Driver here reports CUDA 13.x, which runs CUDA 12 wheels.
+If the `cu126` index 404s on a newer PyTorch, use the current CUDA index from the PyTorch site (`cu128`, etc.). Newer NVIDIA drivers generally run CUDA 12 wheels.
 
-VMAF models ship in `.\models\` from https://github.com/Netflix/vmaf/tree/master/model.
+### FFmpeg
+
+1. Download a **full** Windows build that includes libvmaf (Gyan `full_build`).
+2. Unpack it somewhere stable, for example `C:\ffmpeg\`.
+3. Set `ffmpeg.exe` and `ffprobe.exe` in the GUI (saved to `%APPDATA%\VSR-Eval\config.json`), or pass `--ffmpeg` / `--ffprobe`.
+
+### VMAF models
+
+Official Netflix JSON models ship in `models\` from https://github.com/Netflix/vmaf/tree/master/model.
 
 **v0** (original):
 
@@ -89,7 +97,7 @@ The UI and probe print both auto choices. Saved settings still default to `auto`
 
 ### Optional conda
 
-`environment.yml` is provided, but on this PC the pip CUDA wheels above are the supported path.
+`environment.yml` is provided. The pip CUDA wheels above are the path this project is developed against.
 
 ## Run
 
@@ -123,18 +131,18 @@ Opens a local UI with:
 ### CLI
 
 ```powershell
-python -m vsr_eval --ref C:\VSR\ref.mp4 --dist C:\VSR\upscaled.mp4 --out C:\VSR\results
+python -m vsr_eval --ref C:\path\to\ref.mp4 --dist C:\path\to\upscaled.mp4 --out C:\path\to\results
 ```
 
 Multiple distorted files:
 
 ```powershell
 python -m vsr_eval `
-  --ref C:\VSR\ref.mp4 `
-  --dist C:\VSR\upscaled_a.mp4 `
-  --dist C:\VSR\upscaled_b.mp4 `
+  --ref C:\path\to\ref.mp4 `
+  --dist C:\path\to\upscaled_a.mp4 `
+  --dist C:\path\to\upscaled_b.mp4 `
   --metrics psnr,ssim,ms_ssim,vmaf,lpips,erqa `
-  --out C:\VSR\results
+  --out C:\path\to\results
 ```
 
 Useful flags:
@@ -146,10 +154,10 @@ Useful flags:
 --lpips-net alex|vgg
 --scale-distorted
 --erqa-vis --erqa-vis-start 0 --erqa-vis-end 24 --erqa-vis-video
---ffmpeg C:\VSR\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe
---ffprobe C:\VSR\ffmpeg-9.0.1-full_build\bin\ffprobe.exe
+--ffmpeg C:\ffmpeg\bin\ffmpeg.exe
+--ffprobe C:\ffmpeg\bin\ffprobe.exe
 --self-test
---recover --out C:\VSR\results
+--recover --out C:\path\to\results
 ```
 
 ### Recover a summary after an interruption
@@ -159,12 +167,12 @@ If a run is killed, crashes, or is cancelled before it writes `summary.csv` / `s
 Rebuild the summary from that folder:
 
 ```powershell
-python -m vsr_eval --recover --out C:\VSR\results
+python -m vsr_eval --recover --out C:\path\to\results
 ```
 
 In the GUI, set **Output directory** to that folder and click **Recover summary**.
 
-If the output folder still contains files from **earlier runs**, recovery keeps only the **last run**: the clip family of the newest file (for example every `s-racenight_lossless-*` next to leftover sunflower / karting / sollevante outputs). When names do not share that pattern, it uses the most recent time cluster instead.
+If the output folder still contains files from **earlier runs**, recovery keeps only the **last run**: the clip family of the newest file (for example every `clip_lossless-*` next to leftover files from other clips). When names do not share that pattern, it uses the most recent time cluster instead.
 
 The **last treated file** of that run is never added to the recovered summary. That file is the one most likely to have been truncated mid-write. `recovery.json` records the family, the skipped stem, and which older files were ignored. Cancelled runs also write a summary of files that had already finished (the in-progress file is excluded).
 
@@ -213,14 +221,16 @@ Each completed run is also copied into `%APPDATA%\VSR-Eval\runs\<run-id>\` with 
 
 ```json
 {
-  "ffmpeg_path": "C:\\VSR\\ffmpeg-9.0.1-full_build\\bin\\ffmpeg.exe",
-  "ffprobe_path": "C:\\VSR\\ffmpeg-9.0.1-full_build\\bin\\ffprobe.exe",
+  "ffmpeg_path": "C:\\ffmpeg\\bin\\ffmpeg.exe",
+  "ffprobe_path": "C:\\ffmpeg\\bin\\ffprobe.exe",
   "default_metrics": ["psnr", "ssim", "ms_ssim", "vmaf", "lpips", "erqa"],
   "vmaf_model": "auto",
   "lpips_net": "alex",
   "erqa_stride": 1
 }
 ```
+
+Use the absolute paths to *your* FFmpeg full build.
 
 ## Self-test
 
