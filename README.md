@@ -4,6 +4,8 @@ Local Windows desktop + CLI tool that compares a high-resolution **reference** M
 
 This is **not** an upscaler and **not** a web SaaS. It runs on this PC.
 
+Licensed under [GNU GPL v3 or later](LICENSE). Third-party model licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
+
 ## Metrics
 
 | Metric | Source | Better | Notes |
@@ -240,5 +242,20 @@ vsr_eval/recover.py          rebuild summary from per-file outputs
 vsr_eval/history.py          previous-run store for the GUI
 vsr_eval/app.py              Gradio UI
 vsr_eval/cli.py              python -m vsr_eval
-models/                      Netflix VMAF JSON
+models/                      Netflix VMAF JSON (BSD-2-Clause-Patent)
 ```
+
+## License
+
+VSR-Eval is free software: you can redistribute it and/or modify it under the
+terms of the **GNU General Public License v3 or later**. See [`LICENSE`](LICENSE).
+
+Third-party metric **models** keep their own licenses (they are not GPL):
+
+| Model / metric | Shipped here? | License | Copyright |
+|---|---|---|---|
+| Netflix VMAF JSON (v0 and v1) | Yes, `models/` | BSD-2-Clause-Patent | Netflix, Inc. |
+| LPIPS weights (`alex` / `vgg`) + ImageNet trunks | No (downloaded at runtime by `lpips` / `torchvision`) | BSD-2-Clause / BSD-3-Clause | Zhang et al.; TorchVision |
+| ERQA | No (pip package; no separate NN weights) | MIT | Kirillova, Lyapustin |
+
+Full notices: [`THIRD_PARTY.md`](THIRD_PARTY.md) and [`models/LICENSE`](models/LICENSE).

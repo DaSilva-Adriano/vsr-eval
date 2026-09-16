@@ -197,6 +197,8 @@ def launch_gui(server_name: str = "127.0.0.1", server_port: int = 7860, inbrowse
             "# VSR-Eval\n"
             "Local full-reference evaluation of upscaled / reconstructed MP4s against an HR reference.\n\n"
             + DIRECTION_NOTE
+            + "\n\nVSR-Eval is free software under the [GNU GPL v3 or later](https://www.gnu.org/licenses/gpl-3.0.html). "
+            "Third-party model licenses are in `THIRD_PARTY.md`."
         )
         status_md = gr.Markdown(_status_markdown(tools))
 

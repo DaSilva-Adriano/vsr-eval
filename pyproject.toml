@@ -7,7 +7,12 @@ name = "vsr-eval"
 version = "1.0.0"
 description = "Local full-reference video super-resolution evaluation (PSNR, SSIM, MS-SSIM, VMAF, LPIPS, ERQA)"
 readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.11"
+authors = [{name = "Adriano"}]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
 
 [project.scripts]
 vsr-eval = "vsr_eval.cli:main"

@@ -2,6 +2,9 @@ Official Netflix VMAF JSON models, downloaded from:
 
   https://github.com/Netflix/vmaf/tree/master/model
 
+License: BSD-2-Clause-Patent (Copyright (c) 2020 Netflix, Inc.).
+Full text in LICENSE in this folder. Also listed in ../THIRD_PARTY.md.
+
 v0 (auto / auto-v0 picks HD vs 4K when reference long side is >= 2560 px):
   vmaf_v0.6.1.json
   vmaf_4k_v0.6.1.json
